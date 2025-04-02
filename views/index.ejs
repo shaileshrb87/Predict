@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cricket Team Selection</title>
+    <style>
+        .container { max-width: 800px; margin: 20px auto; padding: 20px; }
+        .selection-box { margin: 15px 0; padding: 10px; border: 1px solid #ddd; }
+        .selected-players { margin-top: 20px; }
+        .player-list { list-style: none; padding: 0; }
+        .player-item { padding: 5px; margin: 5px 0; background: #f5f5f5; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>College Cricket Team Selection</h1>
+    
+        <!-- Team A Selection -->
+        <div class="selection-box">
+            <h2>Team A</h2>
+            <label>Select Department:</label>
+            <select id="departmentA" onchange="fetchPlayers('A')">
+                <option value="">Choose Department</option>
+            </select>
+    
+            <label>Available Players:</label>
+            <select id="playersA" onchange="loadPlayers('A')">
+                <option value="">Select Player</option>
+            </select>
+            <button onclick="addPlayer('A')">Add to Team A</button>
+    
+            <div class="selected-players">
+                <h3>Selected Players (<span id="countA">0</span>/11)</h3>
+                <ul id="selected-playersA" class="player-list"></ul>
+            </div>
+        </div>
+    
+        <!-- Team B Selection -->
+        <div class="selection-box">
+            <h2>Team B</h2>
+            <label>Select Department:</label>
+            <select id="departmentB" onchange="fetchPlayers('B')">
+                <option value="">Choose Department</option>
+            </select>
+    
+            <label>Available Players:</label>
+            <select id="playersB" onchange="loadPlayers('B')">
+                <option value="">Select Player</option>
+            </select>
+            <button onclick="addPlayer('B')">Add to Team B</button>
+    
+            <div class="selected-players">
+                <h3>Selected Players (<span id="countB">0</span>/11)</h3>
+                <ul id="selected-playersB" class="player-list"></ul>
+            </div>
+        </div>
+    
+        <button onclick="submitTeams()" id="submit-btn" disabled>Submit Teams</button>
+    </div>
+    
+
+    <script>
+        let teamA = [];
+        let teamB = [];
+        
+        // Load departments for both teams
+        window.onload = async () => {
+            const res = await fetch('/api/departments');
+            const departments = await res.json();
+            
+            ['departmentA', 'departmentB'].forEach(id => {
+                const select = document.getElementById(id);
+                departments.forEach(dept => {
+                    select.innerHTML += `<option value="${dept}">${dept}</option>`;
+                });
+            });
+        };
+        function restrictDepartments(currentTeam, selectedDept) {
+            const otherTeam = currentTeam === 'A' ? 'B' : 'A';
+        
+            const currentSelect = document.getElementById(`department${currentTeam}`);
+            const otherSelect = document.getElementById(`department${otherTeam}`);
+        
+            // Enable all departments first
+            Array.from(otherSelect.options).forEach(option => {
+                option.disabled = false;
+            });
+        
+            // Disable the selected department in the opposite team
+            Array.from(otherSelect.options).forEach(option => {
+                if (option.value === selectedDept) {
+                    option.disabled = true;
+                }
+            });
+        }
+        
+        // Fetch players by department for both teams
+        async function fetchPlayers(team) {
+            const department = document.getElementById(`department${team}`).value;
+            if (!department) return;
+        
+            try {
+                const res = await fetch(`/api/players/${encodeURIComponent(department)}`);
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                
+                const players = await res.json();
+                const playerSelect = document.getElementById(`players${team}`);
+                
+                playerSelect.innerHTML = '<option value="">Select Player</option>';
+                players.forEach(player => {
+                    playerSelect.innerHTML += `
+                        <option value="${player._id}">
+                            ${player.Name} (${player.Role})
+                        </option>`;
+                });
+        
+                // Disable the same department in the opposite team's dropdown
+                restrictDepartments(team, department);
+        
+            } catch (error) {
+                console.error('Error loading players:', error);
+                alert('Failed to load players');
+            }
+        }
+        
+        // Add player to team
+        function addPlayer(team) {
+            const playerSelect = document.getElementById(`players${team}`);
+            const selectedOption = playerSelect.selectedOptions[0];
+        
+            if (!selectedOption.value) {
+                alert('Please select a player!');
+                return;
+            }
+        
+            // Prevent duplicate selection across both teams
+            const playerId = selectedOption.value;
+        
+            if (teamA.some(p => p.id === playerId) || teamB.some(p => p.id === playerId)) {
+                alert('Player is already selected in one of the teams!');
+                return;
+            }
+        
+            const teamList = team === 'A' ? teamA : teamB;
+        
+            if (teamList.length >= 11) {
+                alert(`Maximum 11 players allowed for Team ${team}!`);
+                return;
+            }
+        
+            teamList.push({
+                id: playerId,
+                name: selectedOption.text
+            });
+        
+            // Remove the player from the dropdown
+            playerSelect.remove(playerSelect.selectedIndex);
+        
+            updateSelectionDisplay();
+        }
+        
+        // Update UI display for both teams
+        function updateSelectionDisplay() {
+            ['A', 'B'].forEach(team => {
+                const list = document.getElementById(`selected-players${team}`);
+                const countSpan = document.getElementById(`count${team}`);
+                const submitBtn = document.getElementById('submit-btn');
+        
+                const teamList = team === 'A' ? teamA : teamB;
+        
+                list.innerHTML = teamList.map((player, index) => `
+                    <li class="player-item">
+                        ${player.name}
+                        <button onclick="removePlayer('${team}', ${index})">Remove</button>
+                    </li>
+                `).join('');
+        
+                countSpan.textContent = teamList.length;
+                submitBtn.disabled = teamA.length !== 11 || teamB.length !== 11;
+            });
+        }
+        
+        // Remove player from team
+        function removePlayer(team, index) {
+            if (team === 'A') {
+                teamA.splice(index, 1);
+            } else {
+                teamB.splice(index, 1);
+            }
+            updateSelectionDisplay();
+        }
+        
+        // Submit both teams
+        async function submitTeams() {
+            try {
+                const response = await fetch('/api/team', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ teamA, teamB })
+                });
+        
+                const result = await response.json();
+                alert(result.message);
+                teamA = [];
+                teamB = [];
+                updateSelectionDisplay();
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error submitting teams!');
+            }
+        }
+        
+    </script>
+</body>
+</html>
